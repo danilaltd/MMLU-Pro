@@ -65,8 +65,9 @@ def get_client():
     elif args.model_name in ["iask"]:
         client = {"Authorization": f"Bearer {API_KEY}"}
     else:
-        client = None
-        print("For other model API calls, please implement the client definition method yourself.")
+        client = "custom_gateway"
+        # client = None
+        # print("For other model API calls, please implement the client definition method yourself.")
     return client
 
 
@@ -138,8 +139,51 @@ def call_api(client, instruction, inputs):
             result = response.json()["response"]["message"]
         return result
     else:
-        print("For other model API calls, please implement the request method yourself.")
-        result = None
+        import requests
+        token = API_KEY
+        
+        headers = {
+            "x-api-token": token,
+            "Content-Type": "application/json"
+        }
+        
+        base_url = args.url.rstrip('/')
+        target_model_name = "google:gemini-3-pro-preview"
+
+        try:
+            conv_payload = {
+                "title": f"MMLU-Pro {args.model_name}",
+                "model": target_model_name
+            }
+
+            if "orion" in args.model_name:
+                conv_payload["aiSuperAgent"] = '6943f4cdf708b1d719faf764'
+            elif "elen" in args.model_name:
+                conv_payload["aiSuperAgent"] = '6970986b4e761c9b775f86c6'
+
+            conv_res = requests.post(f"{base_url}/conversations", headers=headers, json=conv_payload, timeout=30)
+            
+            if conv_res.status_code == 401:
+                print(f"Ошибка 401: Проверь токен в x-api-token. Текущий токен: {token[:5]}***")
+                return None
+            
+            conv_res.raise_for_status()
+            conv_id = conv_res.json().get('_id')
+
+            msg_res = requests.post(
+                f"{base_url}/conversations/{conv_id}/messages", 
+                headers=headers, 
+                json={"message": instruction + inputs}, 
+                timeout=300
+            )
+            msg_res.raise_for_status()
+            result = msg_res.json()['assistantMessage']['content']
+
+        except Exception as e:
+            print(f"Error for {args.model_name}: {e}")
+            result = None
+        # print("For other model API calls, please implement the request method yourself.")
+        # result = None
     print("cost time", time.time() - start)
     return result
 
@@ -294,7 +338,9 @@ def evaluate(subjects):
         output_summary_path = os.path.join(args.output_dir, subject + "_summary.json")
         res, category_record = update_result(output_res_path)
 
-        for each in tqdm(test_data):
+        for i, each in enumerate(tqdm(test_data[:15])):
+            if i % 5 == 0: 
+                time.sleep(10)
             label = each["answer"]
             category = subject
             pred, response, exist = single_request(client, each, dev_df, res)
@@ -352,18 +398,15 @@ def save_summary(category_record, output_summary_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", "-o", type=str, default="eval_results/")
-    parser.add_argument("--model_name", "-m", type=str, default="gpt-4",
-                        choices=["gpt-4", "gpt-4o", "o1-preview",
-                                 "deepseek-chat", "deepseek-coder",
-                                 "gemini-1.5-flash-latest",
-                                 "gemini-1.5-pro-latest",
-                                 "claude-3-opus-20240229",
-                                 "gemini-1.5-flash-8b",
-                                 "claude-3-sonnet-20240229",
-                                 "gemini-002-pro",
-                                 "gemini-002-flash"])
+    
+    parser.add_argument("--model_name", "-m", type=str, default="gpt-4")
+    
+    parser.add_argument("--url", "-u", type=str, default="https://llm-manager.etacar.io/api/external")
+    
+    parser.add_argument("--num_workers", "-n", type=int, default=1)
+    
     parser.add_argument("--assigned_subjects", "-a", type=str, default="all")
-    assigned_subjects = []
+    
     args = parser.parse_args()
 
     if args.assigned_subjects == "all":

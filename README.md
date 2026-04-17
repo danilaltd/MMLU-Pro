@@ -101,3 +101,11 @@ Thanks to @chibop1 for evaluating the robustness of MMLU-Pro across all the diff
   year={2024}
 }
 ```
+
+## How to run with Plain/Elen
+```
+python evaluate_from_api.py   --url "https://llm-manager.etacar.io/api/external"   --model_name "google:gemini-3-pro-preview-elen"    --num_workers 16   --output_dir "eval_results/elen_pro"
+python evaluate_from_api.py   --url "https://llm-manager.etacar.io/api/external"   --model_name "google:gemini-3-pro-preview-plain"   --num_workers 16   --output_dir "eval_results/plain_gemini"
+
+python find_diffs.py
+```
